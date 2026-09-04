@@ -5,18 +5,23 @@ A small visualization tool for planning your BFI London Film Festival 2026 sched
 
 ## Features
 
-- **Weekly calendar** — days as vertical columns, screenings as cards positioned at
-  their start time and sized by runtime; day columns auto-widen for their busiest
-  overlap (horizontal scroll when needed), and overlapping screenings get
-  side-by-side lanes
+- **Festival-wide calendar** — all 12 days on one calendar; days are vertical
+  columns, screenings as cards positioned at their start time and sized by
+  runtime; day columns auto-widen for their busiest overlap (horizontal scroll
+  when needed), and overlapping screenings get side-by-side lanes. The strip
+  above is a mini-map of the whole festival (venue-coloured ticks, your picks
+  brighter) — click a day to jump to it
 - **Venue colour coding** — BFI Southbank, BFI IMAX, Southbank Centre, Curzon Soho,
   Vue West End, ICA, Prince Charles; click a legend chip to hide/show a venue
 - **Personal plan** — the checkbox on a card adds a screening to your plan; saved in
   `localStorage`, survives reloads and server restarts
 - **Movie details** — clicking a card (or a plan entry) opens the film's popup:
-  every screening of the film with add-to-plan checkboxes, per-screening
-  hide/restore, and BFI links; **Hide others** hides all screenings of the film
-  that aren't in your plan (decluttering repeats)
+  its synopsis, a single BFI link for booking, and every screening of the film
+  with add-to-plan checkboxes and per-screening hide/restore; **Hide others**
+  hides the screenings that aren't in your plan, **Hide all** (when nothing of
+  the film is planned) hides every screening — handy for decluttering repeats.
+  Plan entries can be removed with their **✕**, and **Clear** wipes the plan
+  (after a confirmation)
 - **Conflict detection** — overlapping picks are outlined red with warnings in the
   side panel; tight transfers between different venues (< 30 min gap) are orange
 - **Hide screenings** — from the details popup; recover from the
@@ -27,7 +32,8 @@ A small visualization tool for planning your BFI London Film Festival 2026 sched
   screenings and venues). **Import** loads a JSON export — for moving your plan
   between browsers or sharing it. The sidebar collapses via **«** for a
   full-screen calendar — bring it back with the “« Sidebar” tab.
-- **Help** — in-app info page describing all of the above
+- **Help** — in-app info page describing all of the above; feedback via
+  [t.me/msmych](https://t.me/msmych)
 
 ## Run
 
@@ -50,5 +56,5 @@ Results go to `data/screenings.json`; film runtimes are cached in
 `data/detail-cache.json` (use `--refresh` to force re-fetching runtimes).
 
 Screening fields: `id`, `title`, `start` (`2026-10-14T19:45`), `durationMin`,
-`venue`, `venueRaw`, `strand`, `url`, `priceMin/Max`, `salesStatus`,
-`availability`, `availableNum`.
+`venue`, `venueRaw`, `strand`, `url`, `tagline` (short synopsis from the film
+page), `priceMin/Max`, `salesStatus`, `availability`, `availableNum`.

@@ -24,8 +24,8 @@ const state = {
   hiddenVenues: new Set(JSON.parse(localStorage.getItem('lff26-hidden-venues') || '[]')),
   hiddenIds: new Set(JSON.parse(localStorage.getItem('lff26-hidden-screenings') || '[]')),
   selected: new Set(JSON.parse(localStorage.getItem('lff26-plan') || '[]')),
-  activeWeek: 0,
-  weeks: [],
+  festivalDays: [],
+  dayPos: [], // [{ day, x, w }] — column offsets inside #calendar, for the day-nav
 };
 
 function mainVenue(venueName) {
@@ -75,20 +75,6 @@ function dayLabel(dateStr) {
   const dt = new Date(Date.UTC(y, m - 1, d));
   const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dt.getUTCDay()];
   return { dow, dnum: d };
-}
-
-function groupWeeks(screenings, festivalDays) {
-  // chunk festival days into ~7-day blocks
-  const weeks = [];
-  for (let i = 0; i < festivalDays.length; i += 7) {
-    const days = festivalDays.slice(i, i + 7);
-    weeks.push({
-      label: `${dayLabel(days[0]).dow} ${dayLabel(days[0]).dnum} – ${dayLabel(days[days.length - 1]).dow} ${dayLabel(days[days.length - 1]).dnum}`,
-      days,
-      screenings: screenings.filter(s => days.includes(parseStart(s.start).day)),
-    });
-  }
-  return weeks;
 }
 
 /* ---- conflict & gap analysis among selected screenings ---- */
@@ -174,16 +160,60 @@ function layoutDay(screenings) {
 }
 
 /* ---- rendering ---- */
-function renderWeekTabs() {
-  const nav = document.getElementById('week-tabs');
+
+/* mini-map strip above the calendar: one cell per day, flex-sized proportionally
+   to the calendar column, with a venue-coloured tick per visible screening */
+function renderDayNav(dayData, tMin, tMax) {
+  const nav = document.getElementById('day-nav');
   nav.innerHTML = '';
-  state.weeks.forEach((w, i) => {
-    const b = document.createElement('button');
-    b.textContent = w.label + ` (${w.screenings.length})`;
-    if (i === state.activeWeek) b.classList.add('active');
-    b.onclick = () => { state.activeWeek = i; render(); };
-    nav.appendChild(b);
+  const today = new Date().toISOString().slice(0, 10);
+  const span = Math.max(1, tMax - tMin);
+
+  state.festivalDays.forEach((d, i) => {
+    const dd = dayData[i];
+    const cell = document.createElement('div');
+    cell.className = 'dn-cell' + (d === today ? ' today' : '');
+    cell.style.flexGrow = dd.width;
+    const { dow, dnum } = dayLabel(d);
+    cell.innerHTML = `<div class="dn-label"><span class="dn-dow">${dow}</span><span class="dn-dnum">${dnum}</span></div>`;
+
+    const ticks = document.createElement('div');
+    ticks.className = 'dn-ticks';
+    for (const s of dd.list) {
+      const p = dd.lanes.get(s.id);
+      const tick = document.createElement('div');
+      tick.className = 'dn-tick' + (state.selected.has(s.id) ? ' sel' : '');
+      tick.style.background = venueColor(mainVenue(s.venue));
+      tick.style.top = ((parseStart(s.start).minutes - tMin) / span) * 100 + '%';
+      tick.style.left = (p.lane / p.lanes) * 100 + '%';
+      tick.title = `${fmtTime(parseStart(s.start).minutes)} · ${s.title}`;
+      ticks.appendChild(tick);
+    }
+    cell.appendChild(ticks);
+
+    cell.onclick = () => {
+      const wrap = document.getElementById('calendar-wrap');
+      const pos = state.dayPos[i];
+      wrap.scrollTo({
+        left: Math.max(0, pos.x - (wrap.clientWidth - GUTTER_W - pos.w) / 2),
+        behavior: 'smooth',
+      });
+    };
+    nav.appendChild(cell);
   });
+  updateDayNavActive();
+}
+
+function updateDayNavActive() {
+  const wrap = document.getElementById('calendar-wrap');
+  const cells = document.querySelectorAll('#day-nav .dn-cell');
+  const center = wrap.scrollLeft + wrap.clientWidth / 2;
+  let best = 0, bestDist = Infinity;
+  state.dayPos.forEach((p, i) => {
+    const dist = Math.abs(p.x + p.w / 2 - center);
+    if (dist < bestDist) { bestDist = dist; best = i; }
+  });
+  cells.forEach((c, i) => c.classList.toggle('active', i === best));
 }
 
 function renderLegend(venues) {
@@ -205,10 +235,10 @@ function renderLegend(venues) {
 
 function renderCalendar() {
   const cal = document.getElementById('calendar');
-  const week = state.weeks[state.activeWeek];
+  const days = state.festivalDays;
   cal.innerHTML = '';
 
-  const visible = week.screenings.filter(s =>
+  const visible = state.screenings.filter(s =>
     !state.hiddenVenues.has(mainVenue(s.venue)) && !state.hiddenIds.has(s.id));
   const allStarts = visible.map(s => parseStart(s.start).minutes);
   const allEnds = visible.map(endTime);
@@ -217,7 +247,7 @@ function renderCalendar() {
   const px = min => ((min - tMin) / 60) * HOUR_H;
 
   // per-day: screenings, lane layout, column width sized for max concurrent lanes
-  const dayData = week.days.map(d => {
+  const dayData = days.map(d => {
     const list = visible.filter(s => parseStart(s.start).day === d);
     const lanes = layoutDay(list);
     const maxLanes = list.length ? Math.max(...[...lanes.values()].map(p => p.lanes)) : 1;
@@ -225,8 +255,8 @@ function renderCalendar() {
   });
 
   // absolute layout: #calendar is a positioned block of fixed size; day columns
-// are absolutely placed, the time gutter is an in-flow sticky child (so its
-// sticky range covers the full width) with an inner sticky corner.
+  // are absolutely placed, the time gutter is an in-flow sticky child (so its
+  // sticky range covers the full width) with an inner sticky corner.
   cal.style.position = 'relative';
   cal.style.width = GUTTER_W + dayData.reduce((a, dd) => a + dd.width, 0) + 'px';
   cal.style.height = HEAD_H + px(tMax) + 40 + 'px';
@@ -235,13 +265,15 @@ function renderCalendar() {
   const { status } = analyseSelection();
 
   // day columns
+  state.dayPos = [];
   let x = GUTTER_W;
-  week.days.forEach((d, i) => {
+  days.forEach((d, i) => {
     const dd = dayData[i];
     const col = document.createElement('div');
     col.className = 'grid-col';
     col.style.left = x + 'px';
     col.style.width = dd.width + 'px';
+    state.dayPos.push({ day: d, x, w: dd.width });
     x += dd.width;
     const head = document.createElement('div');
     const { dow, dnum } = dayLabel(d);
@@ -275,6 +307,8 @@ function renderCalendar() {
     gutter.appendChild(l);
   }
   cal.appendChild(gutter);
+
+  renderDayNav(dayData, tMin, tMax);
 }
 
 function renderCard(s, laneInfo, dayWidth, tMin, st) {
@@ -388,9 +422,16 @@ list.sort((a, b) => a.start.localeCompare(b.start));
       item.className = 'plan-item';
       item.style.borderColor = venueColor(mainVenue(s.venue));
       item.innerHTML = `<span class="time">${fmtTime(start)}</span>
-        <span><span class="t">${escapeHtml(s.title)}</span><span class="v">${escapeHtml(s.venue)}</span></span>`;
+        <span><span class="t">${escapeHtml(s.title)}</span><span class="v">${escapeHtml(s.venue)}</span></span>
+        <button class="plan-remove" title="Remove from my plan">✕</button>`;
       item.title = 'Click for details';
-      item.onclick = () => openMovieDetails(s.title);
+      item.onclick = e => {
+        if (e.target.classList.contains('plan-remove')) {
+          toggle(s.id);
+          return;
+        }
+        openMovieDetails(s.title);
+      };
       const entry = document.createElement('div');
       entry.className = 'plan-entry';
       entry.appendChild(item);
@@ -441,6 +482,16 @@ const overlay = () => document.getElementById('overlay');
 const sheet = () => document.getElementById('overlay-sheet');
 
 function openOverlay() {
+  const el = sheet();
+  if (!document.getElementById('sheet-close')) {
+    const x = document.createElement('button');
+    x.id = 'sheet-close';
+    x.className = 'sheet-close no-print';
+    x.textContent = '✕';
+    x.title = 'Close (Esc)';
+    x.onclick = closeOverlay;
+    el.appendChild(x);
+  }
   overlay().classList.remove('hidden');
 }
 function closeOverlay() {
@@ -505,7 +556,6 @@ function openExport() {
   for (const [label, fn] of [
     ['Print', () => window.print()],
     ['Download JSON', downloadJson],
-    ['Close', closeOverlay],
   ]) {
     const b = document.createElement('button');
     b.className = 'btn';
@@ -570,10 +620,11 @@ function openMovieDetails(title) {
 
   el.innerHTML = `
     <h2>${escapeHtml(title)}</h2>
+    ${first.tagline ? `<p class="sheet-tagline">${escapeHtml(first.tagline)}</p>` : ''}
     <p class="sheet-sub">${showings.length} screening${showings.length === 1 ? '' : 's'} · ${first.durationMin} min${first.strand ? ` · ${escapeHtml(first.strand)}` : ''}${price}</p>
     <div class="sheet-actions no-print">
-      <button id="mv-hide-others" class="btn" title="Hide every screening of this film that is not in my plan">Hide others</button>
-      <button id="mv-close" class="btn">Close</button>
+      <button id="mv-hide-others" class="btn">Hide others</button>
+      <a class="btn" href="${first.url}" target="_blank" title="Open this film on the BFI site">BFI ↗</a>
     </div>`;
 
   showings.forEach(s => {
@@ -603,33 +654,28 @@ function openMovieDetails(title) {
     }
     row.appendChild(hideBtn);
 
-    const bfi = document.createElement('a');
-    bfi.className = 'btn mv-bfi';
-    bfi.href = s.url;
-    bfi.target = '_blank';
-    bfi.textContent = '↗';
-    bfi.title = 'Open on BFI site';
-    row.appendChild(bfi);
-
     row.querySelector('.mv-check').onchange = () => { toggle(s.id); openMovieDetails(title); };
     el.appendChild(row);
   });
 
-  document.getElementById('mv-close').onclick = closeOverlay;
-
-  const hideOthersBtn = document.getElementById('mv-hide-others');
+  const hideBtnTop = document.getElementById('mv-hide-others');
   const anySelected = showings.some(s => state.selected.has(s.id));
-  const anythingToHide = showings.some(s => !state.selected.has(s.id) && !state.hiddenIds.has(s.id));
-  if (!anySelected || !anythingToHide) {
-    hideOthersBtn.disabled = true;
-    hideOthersBtn.title = !anySelected
-      ? 'Add a screening to your plan first'
-      : 'Nothing to hide — all other screenings are already hidden';
+  const hideAll = !anySelected;
+  const anythingToHide = showings.some(s => !state.hiddenIds.has(s.id) &&
+    (hideAll || !state.selected.has(s.id)));
+  hideBtnTop.textContent = hideAll ? 'Hide all' : 'Hide others';
+  if (!anythingToHide) {
+    hideBtnTop.disabled = true;
+    hideBtnTop.title = hideAll ? 'All screenings are already hidden' : 'Nothing to hide — all other screenings are already hidden';
+  } else {
+    hideBtnTop.title = hideAll
+      ? 'Hide all screenings of this film'
+      : 'Hide every screening of this film that is not in my plan';
   }
-  hideOthersBtn.onclick = () => {
+  hideBtnTop.onclick = () => {
     let changed = false;
     showings.forEach(s => {
-      if (!state.selected.has(s.id) && !state.hiddenIds.has(s.id)) {
+      if (!state.hiddenIds.has(s.id) && (hideAll || !state.selected.has(s.id))) {
         state.hiddenIds.add(s.id);
         changed = true;
       }
@@ -651,13 +697,18 @@ function openHelp() {
     cards sit at their start time, are sized by runtime, and colour-coded by venue.</p>
     <h3>Calendar</h3>
     <ul>
-      <li>Week tabs at the top switch between festival weeks. Days are columns, sized to fit their
+      <li>All 12 festival days on one calendar. Days are columns, sized to fit their
       busiest overlap — the calendar scrolls horizontally when needed.</li>
+      <li>The strip above the calendar is a map of the whole festival: one cell per
+      day with a tick for every screening (coloured by venue; your picks are
+      brighter). Click a day to scroll to it — the cell nearest the middle of the
+      view stays highlighted.</li>
       <li>Click a venue chip in the legend to show/hide that venue's screenings.</li>
-      <li><b>Click a card</b> to open the film's details: every screening of that
-      film is listed, each with a checkbox (add/remove from plan), a
-      hide/restore button, and a link to the BFI page. <b>Hide others</b>
-      hides all the film's screenings that aren't in your plan — handy for
+      <li><b>Click a card</b> to open the film's details: its synopsis, every
+      screening of that film with a checkbox (add/remove from plan) and a
+      hide/restore button. The <b>BFI ↗</b> link opens the film on the BFI site to
+      book. <b>Hide others</b> hides all the film's screenings that aren't in your
+      plan; <b>Hide all</b> hides every screening of the film — handy for
       decluttering repeats.</li>
       <li>Hidden screenings can be recovered from the “Hidden screenings” bin
       in the side panel.</li>
@@ -672,16 +723,16 @@ function openHelp() {
       <li><b>Export</b> prints your plan or downloads it as JSON (including hidden
       screenings and venues). <b>Import</b> loads such a file — useful for moving
       your plan between browsers or sharing it.</li>
-      <li>The <b>«</b> button hides the sidebar for a full-screen calendar —
-      bring it back with the “« Sidebar” tab.</li>
-    </ul>`;
+      <li>The <b>»</b> button hides the sidebar for a full-screen calendar —
+      bring it back with the <b>« Sidebar</b> button in the header.</li>
+    </ul>
+    <p class="sheet-sub" style="margin-top:16px">Feedback: <a href="https://t.me/msmych" target="_blank">t.me/msmych</a></p>`;
   openOverlay();
 }
 
 function render() {
   const wrap = document.getElementById('calendar-wrap');
   const { scrollLeft, scrollTop } = wrap;
-  renderWeekTabs();
   const venues = [...new Set(state.screenings.map(s => mainVenue(s.venue)))].sort();
   renderLegend(venues);
   renderCalendar();
@@ -689,6 +740,7 @@ function render() {
   renderHiddenBin();
   wrap.scrollLeft = scrollLeft;
   wrap.scrollTop = scrollTop;
+  updateDayNavActive();
 }
 
 async function init() {
@@ -696,9 +748,11 @@ async function init() {
   const res = await fetch('data/screenings.json');
   const data = await res.json();
   state.screenings = data.screenings;
-  state.weeks = groupWeeks(data.screenings, data.festivalDays);
+  state.festivalDays = data.festivalDays;
 
   document.getElementById('clear-plan').onclick = () => {
+    if (!state.selected.size) return;
+    if (!confirm('Remove all screenings from your plan?')) return;
     state.selected.clear();
     localStorage.setItem('lff26-plan', '[]');
     render();
@@ -724,6 +778,9 @@ async function init() {
   document.getElementById('show-sidebar').onclick = () => {
     document.body.classList.remove('plan-hidden');
   };
+  document.getElementById('calendar-wrap').addEventListener('scroll', () => {
+    requestAnimationFrame(updateDayNavActive);
+  });
   render();
 }
 

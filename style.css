@@ -50,17 +50,10 @@ h2 {
 }
 
 #show-sidebar {
-  position: fixed;
-  top: 64px;
-  right: 0;
-  z-index: 40;
+  margin-left: auto;
   display: none;
-  border-radius: 6px 0 0 6px;
-  border-right: none;
-  padding: 6px 8px;
-  background: var(--panel);
 }
-body.plan-hidden #show-sidebar { display: block; }
+body.plan-hidden #show-sidebar { display: inline-block; }
 
 .btn {
   background: none;
@@ -73,27 +66,35 @@ body.plan-hidden #show-sidebar { display: block; }
 }
 .btn:hover { color: var(--text); border-color: var(--muted); }
 
-#week-tabs {
+/* festival mini-map: one cell per day, flex-sized proportionally to the
+   calendar columns below */
+#day-nav {
   display: flex;
-  gap: 6px;
-  margin-top: 10px;
+  gap: 3px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
-
-#week-tabs button {
-  background: none;
+.dn-cell {
+  flex-basis: 0;
+  flex-shrink: 1;
+  min-width: 36px;
   border: 1px solid var(--border);
-  border-radius: 6px 6px 0 0;
-  padding: 6px 14px;
-  color: var(--muted);
-  font-size: 13px;
+  border-radius: 6px;
   cursor: pointer;
-  border-bottom: none;
+  position: relative;
+  overflow: hidden;
+  padding: 2px 5px;
 }
-#week-tabs button.active {
-  background: var(--bg);
-  color: var(--text);
-  border-color: var(--border);
-}
+.dn-cell:hover { border-color: var(--muted); }
+.dn-cell.active { background: var(--bg); border-color: var(--muted); }
+.dn-label { font-size: 10px; color: var(--muted); display: flex; gap: 4px; align-items: baseline; }
+.dn-dnum { font-size: 12px; font-weight: 600; color: var(--text); }
+.dn-cell.today .dn-dnum { color: #f59e0b; }
+.dn-ticks { position: absolute; left: 5px; right: 5px; top: 21px; bottom: 3px; }
+.dn-tick { position: absolute; height: 3px; width: 6px; border-radius: 1px; opacity: 0.5; }
+.dn-tick.sel { opacity: 1; height: 4px; }
 
 #venue-legend {
   display: flex;
@@ -334,6 +335,18 @@ body.plan-hidden #plan-panel { display: none; }
 .plan-item .time { color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .plan-item .t { font-weight: 500; }
 .plan-item .v { color: var(--muted); font-size: 11px; display: block; }
+.plan-remove {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+  align-self: center;
+}
+.plan-remove:hover { color: #ef4444; }
 
 .plan-entry { margin-bottom: 3px; }
 
@@ -387,6 +400,28 @@ body.plan-hidden #plan-panel { display: none; }
   border-radius: 10px;
   padding: 32px 36px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  position: relative;
+}
+.sheet-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 9;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  font-size: 16px;
+  color: #999;
+  cursor: pointer;
+  line-height: 1;
+}
+.sheet-close:hover { color: #000; }
+.sheet-tagline {
+  font-size: 13px;
+  color: #333;
+  line-height: 1.45;
+  margin: 0 0 4px;
+  max-width: 90%;
 }
 .sheet h2 { margin: 0 0 4px; font-size: 22px; }
 .sheet h3 { margin: 18px 0 6px; font-size: 14px; }
@@ -441,7 +476,7 @@ body.plan-hidden #plan-panel { display: none; }
 .sheet-item .v { display: block; color: #666; font-size: 12px; }
 
 @media print {
-  header, main { display: none !important; }
+  header, #day-nav, main { display: none !important; }
   .overlay { position: static; background: none; padding: 0; overflow: visible; display: block; }
   .sheet { max-width: none; box-shadow: none; border-radius: 0; padding: 0; }
   .no-print { display: none !important; }
