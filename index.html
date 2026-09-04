@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LFF 2026 Planner</title>
+<link rel="stylesheet" href="style.css?v=3">
+</head>
+<body>
+<header>
+  <div class="header-top">
+    <h1>LFF 2026 Planner</h1>
+    <button id="show-help" class="btn">Help</button>
+  </div>
+  <nav id="week-tabs"></nav>
+  <div id="venue-legend"></div>
+</header>
+<main>
+  <section id="calendar-wrap">
+    <div id="calendar"></div>
+  </section>
+  <aside id="plan-panel">
+    <div class="panel-top">
+      <h2>My plan</h2>
+      <button id="export-plan" class="btn">Export</button>
+      <button id="clear-plan" class="btn" title="Remove all screenings from my plan">Clear</button>
+      <button id="toggle-plan" class="btn" title="Hide the sidebar">«</button>
+    </div>
+    <div id="stats"></div>
+    <div id="warnings"></div>
+    <div id="plan-list"></div>
+    <div id="hidden-bin"></div>
+  </aside>
+</main>
+<button id="show-sidebar" class="btn" title="Show the sidebar">» Sidebar</button>
+<script src="app.js?v=3"></script>
+<div id="overlay" class="overlay hidden"><div id="overlay-sheet" class="sheet"></div></div>
+</body>
+</html>
