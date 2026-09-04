@@ -11,6 +11,8 @@ const VENUE_COLORS = {
 };
 const DEFAULT_COLOR = '#6b7280';
 const HOUR_H = 60; // px per hour
+const HEAD_H = 36; // day header height
+const GUTTER_W = 52;
 const MIN_CARD_H = 50;
 const MIN_DAY_W = 180;
 const MIN_LANE_W = 110; // px per concurrent-lane
@@ -214,9 +216,6 @@ function renderCalendar() {
   const tMax = Math.max(23 * 60, ...(allEnds.length ? allEnds : [23 * 60]));
   const px = min => ((min - tMin) / 60) * HOUR_H;
 
-  cal.style.gridTemplateRows = '36px 1fr';
-  cal.style.height = px(tMax) + 40 + 'px';
-
   // per-day: screenings, lane layout, column width sized for max concurrent lanes
   const dayData = week.days.map(d => {
     const list = visible.filter(s => parseStart(s.start).day === d);
@@ -224,45 +223,35 @@ function renderCalendar() {
     const maxLanes = list.length ? Math.max(...[...lanes.values()].map(p => p.lanes)) : 1;
     return { list, lanes, width: Math.max(MIN_DAY_W, maxLanes * MIN_LANE_W) };
   });
-  cal.style.gridTemplateColumns = `var(--gutter) ${dayData.map(dd => dd.width + 'px').join(' ')}`;
 
-  // header row
-  const corner = document.createElement('div');
-  corner.className = 'corner';
-  cal.appendChild(corner);
+  // absolute layout: #calendar is a positioned block of fixed size; day columns
+// are absolutely placed, the time gutter is an in-flow sticky child (so its
+// sticky range covers the full width) with an inner sticky corner.
+  cal.style.position = 'relative';
+  cal.style.width = GUTTER_W + dayData.reduce((a, dd) => a + dd.width, 0) + 'px';
+  cal.style.height = HEAD_H + px(tMax) + 40 + 'px';
+
   const today = new Date().toISOString().slice(0, 10);
-  week.days.forEach(d => {
-    const head = document.createElement('div');
-    const { dow, dnum } = dayLabel(d);
-    head.className = 'day-head' + (d === today ? ' today' : '');
-    head.innerHTML = `<span class="dow">${dow}</span><span class="dnum">${dnum}</span>`;
-    cal.appendChild(head);
-  });
-
-  // time gutter (sticky when scrolling horizontally)
-  const gutter = document.createElement('div');
-  gutter.className = 'gutter';
-  gutter.style.gridRow = '2';
-  for (let m = Math.ceil(tMin / 60) * 60; m <= tMax; m += 60) {
-    const l = document.createElement('div');
-    l.className = 'time-label';
-    l.style.top = px(m) + 'px';
-    l.textContent = fmtTime(m === 24 * 60 ? 0 : m);
-    gutter.appendChild(l);
-  }
-  cal.appendChild(gutter);
+  const { status } = analyseSelection();
 
   // day columns
-  const { status } = analyseSelection();
+  let x = GUTTER_W;
   week.days.forEach((d, i) => {
     const dd = dayData[i];
     const col = document.createElement('div');
     col.className = 'grid-col';
-    col.style.gridRow = '2';
+    col.style.left = x + 'px';
+    col.style.width = dd.width + 'px';
+    x += dd.width;
+    const head = document.createElement('div');
+    const { dow, dnum } = dayLabel(d);
+    head.className = 'day-head' + (d === today ? ' today' : '');
+    head.innerHTML = `<span class="dow">${dow}</span><span class="dnum">${dnum}</span>`;
+    col.appendChild(head);
     for (let m = Math.ceil(tMin / 60) * 60; m <= tMax; m += 60) {
       const line = document.createElement('div');
       line.className = 'hour-line';
-      line.style.top = px(m) + 'px';
+      line.style.top = HEAD_H + px(m) + 'px';
       col.appendChild(line);
     }
     for (const s of dd.list) {
@@ -270,6 +259,22 @@ function renderCalendar() {
     }
     cal.appendChild(col);
   });
+
+  // time gutter: in-flow child of the full-width calendar, so sticky left: 0
+  // keeps it pinned for the whole horizontal scroll
+  const gutter = document.createElement('div');
+  gutter.className = 'gutter';
+  const corner = document.createElement('div');
+  corner.className = 'corner';
+  gutter.appendChild(corner);
+  for (let m = Math.ceil(tMin / 60) * 60; m <= tMax; m += 60) {
+    const l = document.createElement('div');
+    l.className = 'time-label';
+    l.style.top = HEAD_H + px(m) + 'px';
+    l.textContent = fmtTime(m === 24 * 60 ? 0 : m);
+    gutter.appendChild(l);
+  }
+  cal.appendChild(gutter);
 }
 
 function renderCard(s, laneInfo, dayWidth, tMin, st) {
@@ -292,7 +297,7 @@ function renderCard(s, laneInfo, dayWidth, tMin, st) {
     ? `color-mix(in srgb, ${color} 22%, #191c23)`
     : `color-mix(in srgb, ${color} 7%, #191c23)`;
 
-  const top = ((start - tMin) / 60) * HOUR_H;
+  const top = HEAD_H + ((start - tMin) / 60) * HOUR_H;
   const h = Math.max(((end - start) / 60) * HOUR_H - 2, MIN_CARD_H);
   el.style.top = top + 'px';
   el.style.height = h + 'px';
@@ -306,7 +311,7 @@ function renderCard(s, laneInfo, dayWidth, tMin, st) {
     <div class="title">${escapeHtml(s.title)}</div>
     ${h >= 66 ? `<div class="meta">${fmtTime(start)} – ${endMinus1} · ${escapeHtml(s.venue)}</div>` : ''}
     ${h >= 96 && s.strand ? `<div class="strand">${escapeHtml(s.strand)}</div>` : ''}`;
-  el.title = 'Click: add/remove from plan · right-click: hide this screening';
+  el.title = 'Click for details · checkbox adds to plan';
 
   const check = document.createElement('input');
   check.type = 'checkbox';
@@ -325,8 +330,7 @@ function renderCard(s, laneInfo, dayWidth, tMin, st) {
   ext.onclick = e => e.stopPropagation();
   el.appendChild(ext);
 
-  el.onclick = () => toggle(s.id);
-  el.oncontextmenu = e => { e.preventDefault(); hideScreening(s.id); };
+  el.onclick = () => openDetails(s.id);
   return el;
 }
 
@@ -380,7 +384,7 @@ function renderPlanPanel() {
 
   listEl.innerHTML = '';
   if (!selected.length) {
-    listEl.innerHTML = '<div class="empty-hint">Tick screenings on the calendar to build your plan. Click a card to toggle, right-click to hide a screening (recover it from the bin below), ↗ opens the BFI page.</div>';
+    listEl.innerHTML = '<div class="empty-hint">Tick screenings on the calendar to build your plan. Click a card for details; the checkbox adds it to your plan. Hidden screenings land in the bin below and can be restored.</div>';
     return;
   }
   const byDay = groupByDay(selected);
@@ -567,6 +571,59 @@ function openExport() {
   openOverlay();
 }
 
+/* ---- screening details (opens on card click) ---- */
+function openDetails(id) {
+  const s = state.screenings.find(x => x.id === id);
+  if (!s) return;
+  const el = sheet();
+  const start = parseStart(s.start).minutes;
+  const end = endTime(s);
+  const { dow, dnum } = dayLabel(parseStart(s.start).day);
+  const selected = state.selected.has(s.id);
+  const price = s.priceMin
+    ? ` · ${escapeHtml(s.priceMin)}${s.priceMax && s.priceMax !== s.priceMin ? `–${escapeHtml(s.priceMax)}` : ''}`
+    : '';
+
+  el.innerHTML = `
+    <h2>${escapeHtml(s.title)}</h2>
+    <p class="sheet-sub">${dow} ${dnum} Oct · ${fmtTime(start)}–${fmtEnd(end)} · ${s.durationMin} min
+      · ${escapeHtml(s.venue)}${s.strand ? ` · ${escapeHtml(s.strand)}` : ''}${price}</p>
+    <div class="sheet-actions no-print">
+      <button id="det-toggle" class="btn">${selected ? '✓ In plan — remove' : 'Add to plan'}</button>
+      <button id="det-hide" class="btn">Hide this screening</button>
+      <a class="btn" href="${s.url}" target="_blank">BFI ↗</a>
+      <button id="det-close" class="btn">Close</button>
+    </div>`;
+
+  const alts = state.screenings
+    .filter(o => o.title === s.title && o.id !== s.id)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  if (alts.length) {
+    const altWrap = document.createElement('div');
+    altWrap.className = 'alts';
+    const lbl = document.createElement('span');
+    lbl.className = 'alts-label';
+    lbl.textContent = 'also at:';
+    altWrap.appendChild(lbl);
+    alts.forEach(o => {
+      const b = document.createElement('button');
+      b.className = 'alt-chip' + (state.selected.has(o.id) ? ' sel' : '');
+      const { dow: odow, dnum: odnum } = dayLabel(parseStart(o.start).day);
+      b.textContent = `${odow} ${odnum} ${fmtTime(parseStart(o.start).minutes)} · ${mainVenue(o.venue)}`;
+      b.title = 'View this screening';
+      b.onclick = () => openDetails(o.id);
+      altWrap.appendChild(b);
+    });
+    el.appendChild(altWrap);
+  }
+  el.style.setProperty('--accent', venueColor(mainVenue(s.venue)));
+
+  document.getElementById('det-toggle').onclick = () => { toggle(s.id); openDetails(s.id); };
+  document.getElementById('det-hide').onclick = () => { hideScreening(s.id); closeOverlay(); };
+  document.getElementById('det-close').onclick = closeOverlay;
+  openOverlay();
+}
+
 function openHelp() {
   const el = sheet();
   el.innerHTML = `
@@ -578,9 +635,11 @@ function openHelp() {
       <li>Week tabs at the top switch between festival weeks. Days are columns, sized to fit their
       busiest overlap — the calendar scrolls horizontally when needed.</li>
       <li>Click a venue chip in the legend to show/hide that venue's screenings.</li>
-      <li><b>Click a card</b> (or its checkbox) to add/remove it from your plan.</li>
-      <li><b>Right-click a card</b> to hide that screening — recover it from the
-      “Hidden screenings” bin in the side panel.</li>
+      <li><b>Click a card</b> to open its details (time, runtime, venue, price,
+      other screenings — plus controls). The <b>checkbox</b> adds/removes it from
+      your plan directly.</li>
+      <li>From the details view you can also <b>hide</b> a screening — recover it
+      from the “Hidden screenings” bin in the side panel.</li>
       <li>The <b>↗</b> on a card opens the screening on the BFI site to book.</li>
     </ul>
     <h3>Plan</h3>
@@ -592,7 +651,7 @@ function openHelp() {
       screening of the same film.</li>
       <li><b>Export</b> prints your plan or copies it as text.</li>
       <li>The <b>«</b> button hides the sidebar for a full-screen calendar —
-      bring it back with the “» Sidebar” tab.</li>
+      bring it back with the “« Sidebar” tab.</li>
     </ul>`;
   openOverlay();
 }

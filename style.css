@@ -131,9 +131,6 @@ main {
 
 #calendar {
   position: relative;
-  display: grid;
-  grid-template-columns: var(--gutter) repeat(var(--days), 1fr);
-  min-height: 100%;
 }
 
 .day-head {
@@ -142,7 +139,6 @@ main {
   z-index: 5;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  border-left: 1px solid var(--border);
   padding: 8px 6px;
   font-size: 13px;
   text-align: center;
@@ -151,18 +147,23 @@ main {
 .day-head .dnum { font-size: 16px; font-weight: 600; }
 .day-head.today .dnum { color: #f59e0b; }
 
-.corner {
-  position: sticky;
-  top: 0; left: 0;
-  z-index: 7;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-}
+/* in-flow child of the full-width #calendar: sticky left:0 pins it for the
+   whole horizontal scroll; the corner inside sticks vertically */
 .gutter {
   position: sticky;
   left: 0;
   z-index: 6;
   background: var(--bg);
+  width: var(--gutter);
+  height: 100%;
+}
+.corner {
+  position: sticky;
+  top: 0;
+  z-index: 7;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  height: 36px;
 }
 body.plan-hidden #plan-panel { display: none; }
 
@@ -175,8 +176,10 @@ body.plan-hidden #plan-panel { display: none; }
 }
 
 .grid-col {
+  position: absolute;
+  top: 0;
+  height: 100%;
   border-left: 1px solid var(--border);
-  position: relative;
 }
 .hour-line {
   position: absolute;
@@ -413,7 +416,18 @@ body.plan-hidden #plan-panel { display: none; }
 .sheet code { background: #eee; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
 .sheet .btn { border-color: #ccc; color: #333; }
 .sheet .btn:hover { border-color: #888; color: #000; }
-.sheet-actions { display: flex; gap: 8px; margin-bottom: 16px; }
+.sheet-actions { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
+.sheet-actions .btn {
+  border-color: #ccc;
+  color: #333;
+  text-decoration: none;
+}
+.sheet-actions .btn:hover { border-color: #888; color: #000; }
+.sheet .alts { padding: 0; margin-bottom: 14px; }
+.sheet .alts-label { color: #666; }
+.sheet .alt-chip { border-color: #ccc; color: #555; }
+.sheet .alt-chip:hover { border-color: #888; color: #000; }
+.sheet .alt-chip.sel { border-color: #16a34a; color: #16a34a; }
 .sheet .warning-item.overlap { border-color: #dc2626; color: #b91c1c; }
 .sheet .warning-item.tight { border-color: #d97706; color: #b45309; }
 .sheet-day { margin-bottom: 14px; }
