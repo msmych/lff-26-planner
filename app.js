@@ -330,7 +330,7 @@ function renderCard(s, laneInfo, dayWidth, tMin, st) {
   ext.onclick = e => e.stopPropagation();
   el.appendChild(ext);
 
-  el.onclick = () => openDetails(s.id);
+  el.onclick = () => openMovieDetails(s.title);
   return el;
 }
 
@@ -350,18 +350,6 @@ function hideScreening(id) {
 function unhideScreening(id) {
   state.hiddenIds.delete(id);
   localStorage.setItem('lff26-hidden-screenings', JSON.stringify([...state.hiddenIds]));
-  render();
-}
-
-function swapSelection(fromId, toId) {
-  if (state.selected.has(toId)) {
-    // that instance is already in the plan — clicking removes the duplicate
-    state.selected.delete(toId);
-  } else {
-    state.selected.delete(fromId);
-    state.selected.add(toId);
-  }
-  localStorage.setItem('lff26-plan', JSON.stringify([...state.selected]));
   render();
 }
 
@@ -393,42 +381,19 @@ function renderPlanPanel() {
     const wrap = document.createElement('div');
     wrap.className = 'plan-day';
     wrap.innerHTML = `<h3>${dow} ${dnum} Oct</h3>`;
-    list.sort((a, b) => a.start.localeCompare(b.start));
+list.sort((a, b) => a.start.localeCompare(b.start));
     list.forEach(s => {
-      const entry = document.createElement('div');
-      entry.className = 'plan-entry';
       const start = parseStart(s.start).minutes;
       const item = document.createElement('div');
       item.className = 'plan-item';
       item.style.borderColor = venueColor(mainVenue(s.venue));
       item.innerHTML = `<span class="time">${fmtTime(start)}</span>
         <span><span class="t">${escapeHtml(s.title)}</span><span class="v">${escapeHtml(s.venue)}</span></span>`;
-      item.title = 'Click to remove from plan';
-      item.onclick = () => toggle(s.id);
+      item.title = 'Click for details';
+      item.onclick = () => openMovieDetails(s.title);
+      const entry = document.createElement('div');
+      entry.className = 'plan-entry';
       entry.appendChild(item);
-
-      const alts = state.screenings
-        .filter(o => o.title === s.title && o.id !== s.id)
-        .sort((a, b) => a.start.localeCompare(b.start));
-      if (alts.length) {
-        const altWrap = document.createElement('div');
-        altWrap.className = 'alts';
-        const lbl = document.createElement('span');
-        lbl.className = 'alts-label';
-        lbl.textContent = 'also at:';
-        altWrap.appendChild(lbl);
-        alts.forEach(o => {
-          const b = document.createElement('button');
-          const oSel = state.selected.has(o.id);
-          b.className = 'alt-chip' + (oSel ? ' sel' : '');
-          const { dow, dnum } = dayLabel(parseStart(o.start).day);
-          b.textContent = `${dow} ${dnum} ${fmtTime(parseStart(o.start).minutes)} · ${mainVenue(o.venue)}`;
-          b.title = oSel ? 'Already in the plan — click to remove it' : 'Move my plan to this screening';
-          b.onclick = e => { e.stopPropagation(); swapSelection(s.id, o.id); };
-          altWrap.appendChild(b);
-        });
-        entry.appendChild(altWrap);
-      }
       wrap.appendChild(entry);
     });
     listEl.appendChild(wrap);
@@ -482,24 +447,44 @@ function closeOverlay() {
   overlay().classList.add('hidden');
 }
 
-function planAsText() {
-  const { selected, warnings } = analyseSelection();
-  const lines = [`LFF 2026 — my plan (${selected.length} screenings)`];
-  const byDay = groupByDay(selected);
-  for (const [day, list] of [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const { dow, dnum } = dayLabel(day);
-    lines.push('', `${dow} ${dnum} Oct`);
-    list.sort((a, b) => a.start.localeCompare(b.start));
-    list.forEach(s => {
-      const start = parseStart(s.start).minutes;
-      lines.push(`  ${fmtTime(start)}–${fmtEnd(endTime(s))}  ${s.title}  ·  ${s.venue}`);
-    });
-  }
-  if (warnings.length) {
-    lines.push('', 'Warnings:');
-    warnings.forEach(w => lines.push(`  ⚠ ${w.text}`));
-  }
-  return lines.join('\n');
+function stateJson() {
+  return JSON.stringify({
+    app: 'lff-26',
+    plan: [...state.selected].sort(),
+    hiddenScreenings: [...state.hiddenIds].sort(),
+    hiddenVenues: [...state.hiddenVenues].sort(),
+  }, null, 2);
+}
+
+function downloadJson() {
+  const blob = new Blob([stateJson()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'lff-plan.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importJson(file) {
+  file.text()
+    .then(text => {
+      const data = JSON.parse(text);
+      if (!data || !Array.isArray(data.plan)) throw new Error('no "plan" array');
+      const validIds = new Set(state.screenings.map(s => s.id));
+      const validVenues = new Set(state.screenings.map(s => mainVenue(s.venue)));
+      state.selected = new Set(data.plan.filter(id => validIds.has(id)));
+      if (Array.isArray(data.hiddenScreenings)) {
+        state.hiddenIds = new Set(data.hiddenScreenings.filter(id => validIds.has(id)));
+      }
+      if (Array.isArray(data.hiddenVenues)) {
+        state.hiddenVenues = new Set(data.hiddenVenues.filter(v => validVenues.has(v)));
+      }
+      localStorage.setItem('lff26-plan', JSON.stringify([...state.selected]));
+      localStorage.setItem('lff26-hidden-screenings', JSON.stringify([...state.hiddenIds]));
+      localStorage.setItem('lff26-hidden-venues', JSON.stringify([...state.hiddenVenues]));
+      render();
+    })
+    .catch(e => alert('Could not import plan: ' + e.message));
 }
 
 function openExport() {
@@ -519,7 +504,7 @@ function openExport() {
   actions.className = 'sheet-actions no-print';
   for (const [label, fn] of [
     ['Print', () => window.print()],
-    ['Copy as text', () => navigator.clipboard.writeText(planAsText())],
+    ['Download JSON', downloadJson],
     ['Close', closeOverlay],
   ]) {
     const b = document.createElement('button');
@@ -571,56 +556,90 @@ function openExport() {
   openOverlay();
 }
 
-/* ---- screening details (opens on card click) ---- */
-function openDetails(id) {
-  const s = state.screenings.find(x => x.id === id);
-  if (!s) return;
+/* ---- movie details (grouped by title, opens on card/plan click) ---- */
+function openMovieDetails(title) {
+  const showings = state.screenings
+    .filter(s => s.title === title)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  if (!showings.length) return;
   const el = sheet();
-  const start = parseStart(s.start).minutes;
-  const end = endTime(s);
-  const { dow, dnum } = dayLabel(parseStart(s.start).day);
-  const selected = state.selected.has(s.id);
-  const price = s.priceMin
-    ? ` · ${escapeHtml(s.priceMin)}${s.priceMax && s.priceMax !== s.priceMin ? `–${escapeHtml(s.priceMax)}` : ''}`
-    : '';
+  const first = showings[0];
+  const priceLo = Math.min(...showings.map(s => parseFloat(String(s.priceMin || '').replace('£', ''))).filter(Number.isFinite));
+  const priceHi = Math.max(...showings.map(s => parseFloat(String(s.priceMax || '').replace('£', ''))).filter(Number.isFinite));
+  const price = Number.isFinite(priceLo) ? ` · £${priceLo}${priceHi > priceLo ? `–£${priceHi}` : ''}` : '';
 
   el.innerHTML = `
-    <h2>${escapeHtml(s.title)}</h2>
-    <p class="sheet-sub">${dow} ${dnum} Oct · ${fmtTime(start)}–${fmtEnd(end)} · ${s.durationMin} min
-      · ${escapeHtml(s.venue)}${s.strand ? ` · ${escapeHtml(s.strand)}` : ''}${price}</p>
+    <h2>${escapeHtml(title)}</h2>
+    <p class="sheet-sub">${showings.length} screening${showings.length === 1 ? '' : 's'} · ${first.durationMin} min${first.strand ? ` · ${escapeHtml(first.strand)}` : ''}${price}</p>
     <div class="sheet-actions no-print">
-      <button id="det-toggle" class="btn">${selected ? '✓ In plan — remove' : 'Add to plan'}</button>
-      <button id="det-hide" class="btn">Hide this screening</button>
-      <a class="btn" href="${s.url}" target="_blank">BFI ↗</a>
-      <button id="det-close" class="btn">Close</button>
+      <button id="mv-hide-others" class="btn" title="Hide every screening of this film that is not in my plan">Hide others</button>
+      <button id="mv-close" class="btn">Close</button>
     </div>`;
 
-  const alts = state.screenings
-    .filter(o => o.title === s.title && o.id !== s.id)
-    .sort((a, b) => a.start.localeCompare(b.start));
-  if (alts.length) {
-    const altWrap = document.createElement('div');
-    altWrap.className = 'alts';
-    const lbl = document.createElement('span');
-    lbl.className = 'alts-label';
-    lbl.textContent = 'also at:';
-    altWrap.appendChild(lbl);
-    alts.forEach(o => {
-      const b = document.createElement('button');
-      b.className = 'alt-chip' + (state.selected.has(o.id) ? ' sel' : '');
-      const { dow: odow, dnum: odnum } = dayLabel(parseStart(o.start).day);
-      b.textContent = `${odow} ${odnum} ${fmtTime(parseStart(o.start).minutes)} · ${mainVenue(o.venue)}`;
-      b.title = 'View this screening';
-      b.onclick = () => openDetails(o.id);
-      altWrap.appendChild(b);
-    });
-    el.appendChild(altWrap);
-  }
-  el.style.setProperty('--accent', venueColor(mainVenue(s.venue)));
+  showings.forEach(s => {
+    const start = parseStart(s.start).minutes;
+    const { dow, dnum } = dayLabel(parseStart(s.start).day);
+    const inPlan = state.selected.has(s.id);
+    const isHidden = state.hiddenIds.has(s.id);
+    const row = document.createElement('div');
+    row.className = 'mv-row' + (inPlan ? ' sel' : '') + (isHidden ? ' is-hidden' : '');
+    row.innerHTML = `
+      <input type="checkbox" class="mv-check" ${inPlan ? 'checked' : ''} title="Add to / remove from my plan">
+      <span class="when">${dow} ${dnum} Oct · ${fmtTime(start)}–${fmtEnd(endTime(s))}</span>
+      <span class="venue">${escapeHtml(s.venue)}</span>`;
 
-  document.getElementById('det-toggle').onclick = () => { toggle(s.id); openDetails(s.id); };
-  document.getElementById('det-hide').onclick = () => { hideScreening(s.id); closeOverlay(); };
-  document.getElementById('det-close').onclick = closeOverlay;
+    const hideBtn = document.createElement('button');
+    hideBtn.className = 'btn mv-hide';
+    hideBtn.textContent = isHidden ? 'restore' : 'hide';
+    hideBtn.title = isHidden ? 'Bring this screening back to the calendar' : 'Hide this screening from the calendar';
+    if (inPlan && !isHidden) {
+      hideBtn.disabled = true;
+      hideBtn.title = 'In your plan — remove it first';
+    } else {
+      hideBtn.onclick = () => {
+        if (isHidden) unhideScreening(s.id); else hideScreening(s.id);
+        openMovieDetails(title);
+      };
+    }
+    row.appendChild(hideBtn);
+
+    const bfi = document.createElement('a');
+    bfi.className = 'btn mv-bfi';
+    bfi.href = s.url;
+    bfi.target = '_blank';
+    bfi.textContent = '↗';
+    bfi.title = 'Open on BFI site';
+    row.appendChild(bfi);
+
+    row.querySelector('.mv-check').onchange = () => { toggle(s.id); openMovieDetails(title); };
+    el.appendChild(row);
+  });
+
+  document.getElementById('mv-close').onclick = closeOverlay;
+
+  const hideOthersBtn = document.getElementById('mv-hide-others');
+  const anySelected = showings.some(s => state.selected.has(s.id));
+  const anythingToHide = showings.some(s => !state.selected.has(s.id) && !state.hiddenIds.has(s.id));
+  if (!anySelected || !anythingToHide) {
+    hideOthersBtn.disabled = true;
+    hideOthersBtn.title = !anySelected
+      ? 'Add a screening to your plan first'
+      : 'Nothing to hide — all other screenings are already hidden';
+  }
+  hideOthersBtn.onclick = () => {
+    let changed = false;
+    showings.forEach(s => {
+      if (!state.selected.has(s.id) && !state.hiddenIds.has(s.id)) {
+        state.hiddenIds.add(s.id);
+        changed = true;
+      }
+    });
+    if (changed) {
+      localStorage.setItem('lff26-hidden-screenings', JSON.stringify([...state.hiddenIds]));
+      render();
+      openMovieDetails(title);
+    }
+  };
   openOverlay();
 }
 
@@ -635,11 +654,13 @@ function openHelp() {
       <li>Week tabs at the top switch between festival weeks. Days are columns, sized to fit their
       busiest overlap — the calendar scrolls horizontally when needed.</li>
       <li>Click a venue chip in the legend to show/hide that venue's screenings.</li>
-      <li><b>Click a card</b> to open its details (time, runtime, venue, price,
-      other screenings — plus controls). The <b>checkbox</b> adds/removes it from
-      your plan directly.</li>
-      <li>From the details view you can also <b>hide</b> a screening — recover it
-      from the “Hidden screenings” bin in the side panel.</li>
+      <li><b>Click a card</b> to open the film's details: every screening of that
+      film is listed, each with a checkbox (add/remove from plan), a
+      hide/restore button, and a link to the BFI page. <b>Hide others</b>
+      hides all the film's screenings that aren't in your plan — handy for
+      decluttering repeats.</li>
+      <li>Hidden screenings can be recovered from the “Hidden screenings” bin
+      in the side panel.</li>
       <li>The <b>↗</b> on a card opens the screening on the BFI site to book.</li>
     </ul>
     <h3>Plan</h3>
@@ -647,9 +668,10 @@ function openHelp() {
       <li>Your plan is saved in the browser (localStorage) — it survives reloads and server restarts.</li>
       <li>Overlapping picks are outlined red; tight transfers between different venues
       (&lt; 30 min gap) are orange.</li>
-      <li>Under each film in the plan, “also at” chips switch your pick to another
-      screening of the same film.</li>
-      <li><b>Export</b> prints your plan or copies it as text.</li>
+      <li>Plan entries open the same film details popup — manage or remove picks from there.</li>
+      <li><b>Export</b> prints your plan or downloads it as JSON (including hidden
+      screenings and venues). <b>Import</b> loads such a file — useful for moving
+      your plan between browsers or sharing it.</li>
       <li>The <b>«</b> button hides the sidebar for a full-screen calendar —
       bring it back with the “« Sidebar” tab.</li>
     </ul>`;
@@ -682,6 +704,12 @@ async function init() {
     render();
   };
   document.getElementById('export-plan').onclick = openExport;
+  document.getElementById('import-plan').onclick = () =>
+    document.getElementById('import-file').click();
+  document.getElementById('import-file').onchange = e => {
+    if (e.target.files[0]) importJson(e.target.files[0]);
+    e.target.value = '';
+  };
   document.getElementById('show-help').onclick = openHelp;
   document.getElementById('overlay').onclick = e => {
     if (e.target === e.currentTarget) closeOverlay();

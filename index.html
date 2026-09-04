@@ -4,7 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LFF 2026 Planner</title>
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=8">
+<link rel="icon" href="favicon/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
+<link rel="manifest" href="favicon/site.webmanifest">
 </head>
 <body>
 <header>
@@ -20,11 +25,12 @@
     <div id="calendar"></div>
   </section>
   <aside id="plan-panel">
-    <div class="panel-top">
+<div class="panel-top">
       <h2>My plan</h2>
+      <button id="import-plan" class="btn" title="Load a plan from a JSON file">Import</button>
       <button id="export-plan" class="btn">Export</button>
       <button id="clear-plan" class="btn" title="Remove all screenings from my plan">Clear</button>
-      <button id="toggle-plan" class="btn" title="Hide the sidebar">»</button>
+      <button id="toggle-plan" class="btn" title="Hide the sidebar">«</button>
     </div>
     <div id="stats"></div>
     <div id="warnings"></div>
@@ -33,7 +39,8 @@
   </aside>
 </main>
 <button id="show-sidebar" class="btn" title="Show the sidebar">« Sidebar</button>
-<script src="app.js?v=5"></script>
+<input type="file" id="import-file" accept=".json,application/json" hidden>
+<script src="app.js?v=8"></script>
 <div id="overlay" class="overlay hidden"><div id="overlay-sheet" class="sheet"></div></div>
 </body>
 </html>

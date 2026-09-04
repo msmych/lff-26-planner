@@ -1,2 +1,3 @@
 data/detail-cache.json
+.DS_Store
 scrape.mjs
