@@ -593,10 +593,7 @@ function openHelp() {
       <li><b>Export</b> prints your plan or copies it as text.</li>
       <li>The <b>«</b> button hides the sidebar for a full-screen calendar —
       bring it back with the “» Sidebar” tab.</li>
-    </ul>
-    <h3>Data</h3>
-    <p>Screenings and runtimes are scraped from whatson.bfi.org.uk; refresh with
-    <code>node scrape.mjs</code>.</p>`;
+    </ul>`;
   openOverlay();
 }
 

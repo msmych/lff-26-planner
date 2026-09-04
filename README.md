@@ -36,16 +36,3 @@ open http://localhost:8642
 
 Note: plans are stored per browser origin — if you change the port, localStorage
 data (plan / hidden screenings / hidden venues) won't carry over.
-
-## Data
-
-`scrape.mjs` fetches the 12 festival day pages (e.g.
-`...default.asp?BOparam::WScontent::loadArticle::permalink=20261014`), extracts the
-embedded `articleContext.searchResults` JS object, and additionally fetches each
-film's detail page for its runtime. Results go to `data/screenings.json`;
-film runtimes are cached in `data/detail-cache.json` (use `--refresh` to force
-re-fetching runtimes).
-
-Screening fields: `id`, `title`, `start` (`2026-10-14T19:45`), `durationMin`,
-`venue`, `venueRaw`, `strand`, `url`, `priceMin/Max`, `salesStatus`,
-`availability`, `availableNum`.
